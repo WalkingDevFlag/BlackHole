@@ -76,6 +76,6 @@ Areas needing contribution:
 - https://rantonels.github.io/starless/
 - https://github.com/rantonels/schwarzschild
 
-  ## License
+## License
 
 MIT License
