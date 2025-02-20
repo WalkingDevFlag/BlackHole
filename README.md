@@ -47,9 +47,6 @@ Areas needing contribution:
 - Spectral line simulation
 - GPU memory optimization
 
-## License
-
-MIT License - See LICENSE.md for details
 
 ## Acknowledgements
 **Papers**
@@ -78,3 +75,7 @@ MIT License - See LICENSE.md for details
 - https://github.com/oseiskar/black-hole
 - https://rantonels.github.io/starless/
 - https://github.com/rantonels/schwarzschild
+
+  ## License
+
+MIT License
