@@ -1,0 +1,9 @@
+1) git clone https://github.com/Balisa16/Blackhole.git
+2) cd Blackhole
+3) chmod +x Blackhole.sh
+4) git submodule update --init --recursive
+5) ./Blackhole.sh build
+6) sudo apt update && sudo apt install dos2unix
+7) dos2unix Blackhole.sh
+8) ./Blackhole.sh build
+9) ./Blackhole.sh run
