@@ -1,12 +1,55 @@
 # Real-time Black Hole Rendering in OpenGL
 ![Screenshot](docs/blackhole-screenrecord.gif)
 
+
+A real-time renderer implementing general relativistic effects around Schwarzschild black holes.
+
+## Features
+
+- **Gravitational Lensing**: Light bending near massive objects
+- **Accretion Disk Rendering**: Procedural multi-wavelength disk
+- **Relativistic Doppler Effects**: Spectral shifting and beaming
+- **Photon Sphere Visualization**: Light trapping at 1.5 Schwarzschild radii
+- **Adaptive Ray Marching**: Stable integration near event horizon
+
+### Dependencies
+- OpenGL 4.6+
+- GLFW 3.3
+- GLM 0.9.9+
+- CMake 3.12
+
 ## Build & Run
 ```
+git clone https://github.com/WalkingDevFlag/BlackHole
+cd BlackHole
 ./Blackhole.sh build
 ./Blackhole.sh run
 ```
 
+## Technical Approach
+
+Implements General Relativity through:
+- Schwarzschild metric tensor calculations
+- Null geodesic integration in GLSL
+- Adaptive Runge-Kutta integration
+- Relativistic radiative transfer approximation
+
+Based on theoretical work from:
+- Gravitational Lensing in Astrophysics[1]
+- O. Semerak's Light Ray Approximations[1]
+- Yamashita's Rasterization Framework[1]
+
+
+## Issues:
+
+Areas needing contribution:
+- Kerr metric implementation
+- Spectral line simulation
+- GPU memory optimization
+
+## License
+
+MIT License - See LICENSE.md for details
 
 ## Acknowledgements
 **Papers**
