@@ -1,6 +1,6 @@
 # Real-time Black Hole Rendering in OpenGL
-![Screenshot](docs/blackhole-screenrecord.gif)
 
+Screenshot
 
 A real-time renderer implementing general relativistic effects around Schwarzschild black holes.
 
@@ -39,16 +39,19 @@ Based on theoretical work from:
 - O. Semerak's Light Ray Approximations[1]
 - Yamashita's Rasterization Framework[1]
 
-
-## Issues:
+## Issues
 
 Areas needing contribution:
 - Kerr metric implementation
 - Spectral line simulation
 - GPU memory optimization
 
+## Inspiration
+
+This project was inspired by the work done in the [rossning92/Blackhole](https://github.com/rossning92/Blackhole) repository. We've built upon their foundation to create our own implementation with additional features and optimizations.
 
 ## Acknowledgements
+
 **Papers**
 - [Gravitational Lensing by Spinning Black Holes in Astrophysics, and in the Movie Interstellar](https://arxiv.org/pdf/1502.03808.pdf)
 - [Trajectory Around A Spherically Symmetric Non-Rotating Black Hole - Sumanta](https://arxiv.org/pdf/1109.0676)
