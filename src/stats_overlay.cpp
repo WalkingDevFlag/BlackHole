@@ -9,7 +9,7 @@
 
 // Timer variables (using ImGui::GetTime)
 static float lastUpdateTime = 0.0f;
-static float updateInterval = 1.0f; // Update every ~3 seconds
+static float updateInterval = 1.0f; // Update every ~1 seconds
 
 // Variables for stats
 static float currentFPS = 0.0f;
