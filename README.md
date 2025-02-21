@@ -12,7 +12,6 @@ A real-time renderer implementing general relativistic effects around Schwarzsch
 - **Photon Sphere Visualization**: Light trapping at 1.5 Schwarzschild radii.
 - **Adaptive Ray Marching**: Stable integration near the event horizon.
 - **Real-time Stats Overlay**: Displays FPS, RAM usage, GPU usage, and temperature in real time (positioned at the top‑right corner).  
-  *(On Linux, RAM is retrieved via the sysinfo API, GPU usage via the NVIDIA GL_NVX_gpu_memory_info extension, and temperature via sysfs.)*
 
 ### Dependencies
 
