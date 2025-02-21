@@ -1,14 +1,14 @@
 #include "stats_overlay.h"
 #include "imgui.h"
 #include <GL/glew.h>  // Required for glGetString, glGetIntegerv, etc.
-#include <string>
-#include <cstring> // For strstr
 
 #ifdef __linux__
 #include <sys/sysinfo.h>
 #include <fstream>
-#include <sstream>
+#include <string>
+#include <cstring> // For strstr
 #include <cstdio>  // For popen, fgets, pclose
+#include <sstream> // For stringstream
 #endif
 
 #ifdef USE_NVML
@@ -40,14 +40,25 @@ static int GetRAMUsageMB()
     return 0;
 }
 
-// Helper function to get the GPU vendor from the OpenGL renderer string.
-static std::string GetGPUVendor()
+// Original method using OpenGL extension (may not work under WSL)
+static int GetGPUUsagePercent_OpenGL()
 {
-    const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-    return renderer ? std::string(renderer) : "";
+    const char* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+    if (extensions && strstr(extensions, "GL_NVX_gpu_memory_info"))
+    {
+        int totalMemoryKB = 0;
+        int currentAvailableKB = 0;
+        glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &totalMemoryKB);
+        glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &currentAvailableKB);
+        if (totalMemoryKB > 0)
+        {
+            int usedMemoryKB = totalMemoryKB - currentAvailableKB;
+            return (usedMemoryKB * 100) / totalMemoryKB;
+        }
+    }
+    return 0;
 }
 
-// -------------------- NVIDIA Functions --------------------
 #ifdef USE_NVML
 // Retrieve GPU usage percentage using NVML.
 static int GetNVMLGPUUsagePercent()
@@ -95,10 +106,10 @@ static int GetNVMLGPUTemperature()
 }
 #endif // USE_NVML
 
-// Fallback: Query NVIDIA metrics via nvidia-smi.
-static int GetGPUUsagePercent_NvidiaSmi()
-{
+// Alternative method: query using nvidia-smi via popen.
 #ifdef __linux__
+static int GetGPUUsagePercent_Smi()
+{
     FILE* pipe = popen("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits", "r");
     if (!pipe)
         return 0;
@@ -114,14 +125,10 @@ static int GetGPUUsagePercent_NvidiaSmi()
     } catch(...) {
         return 0;
     }
-#else
-    return 0;
-#endif
 }
 
-static int GetGPUTemperature_NvidiaSmi()
+static int GetGPUTemperature_Smi()
 {
-#ifdef __linux__
     FILE* pipe = popen("nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits", "r");
     if (!pipe)
         return 0;
@@ -137,42 +144,23 @@ static int GetGPUTemperature_NvidiaSmi()
     } catch(...) {
         return 0;
     }
-#else
-    return 0;
+}
 #endif
-}
 
-// -------------------- AMD Functions (Stub) --------------------
-// For AMD GPUs, you might need to use AMD ADL (Windows) or parse DRM/sysfs (Linux).
-static int GetGPUUsagePercent_AMD()
+// Retrieve CPU temperature by reading from sysfs (in millidegrees Celsius).
+static int GetCPUTemperature()
 {
-    // TODO: Implement AMD-specific metric retrieval.
+    std::ifstream file("/sys/class/thermal/thermal_zone0/temp");
+    if (file.is_open())
+    {
+        int temp;
+        file >> temp;
+        file.close();
+        return temp / 1000; // Convert to degrees Celsius.
+    }
     return 0;
 }
-
-static int GetGPUTemperature_AMD()
-{
-    // TODO: Implement AMD-specific metric retrieval.
-    return 0;
-}
-
-// -------------------- Intel Functions (Stub) --------------------
-// For Intel GPUs, you may query DRM statistics or sysfs entries.
-static int GetGPUUsagePercent_Intel()
-{
-    // TODO: Implement Intel-specific metric retrieval.
-    return 0;
-}
-
-static int GetGPUTemperature_Intel()
-{
-    // TODO: Implement Intel-specific metric retrieval.
-    return 0;
-}
-
-// -------------------- End of Vendor-specific Functions --------------------
-
-#endif // __linux__
+#endif
 
 static void UpdateStats()
 {
@@ -182,40 +170,19 @@ static void UpdateStats()
         currentFPS = ImGui::GetIO().Framerate;
 #ifdef __linux__
         currentRAM = GetRAMUsageMB();
-
-        // Detect vendor and choose appropriate functions.
-        std::string vendor = GetGPUVendor();
-        if (vendor.find("NVIDIA") != std::string::npos)
-        {
 #ifdef USE_NVML
-            int gpuUsage = GetNVMLGPUUsagePercent();
-            int gpuTemp = GetNVMLGPUTemperature();
-            if (gpuUsage == 0)
-                gpuUsage = GetGPUUsagePercent_NvidiaSmi();
-            if (gpuTemp == 0)
-                gpuTemp = GetGPUTemperature_NvidiaSmi();
-            currentGPUUsage = gpuUsage;
-            currentTemp = gpuTemp;
+        int gpuUsage = GetNVMLGPUUsagePercent();
+        int gpuTemp = GetNVMLGPUTemperature();
+        if (gpuUsage == 0)
+            gpuUsage = GetGPUUsagePercent_Smi();
+        if (gpuTemp == 0)
+            gpuTemp = GetGPUTemperature_Smi();
+        currentGPUUsage = gpuUsage;
+        currentTemp = gpuTemp;
 #else
-            currentGPUUsage = GetGPUUsagePercent_NvidiaSmi();
-            currentTemp = GetGPUTemperature_NvidiaSmi();
+        currentGPUUsage = GetGPUUsagePercent_OpenGL();
+        currentTemp = GetCPUTemperature();
 #endif
-        }
-        else if (vendor.find("AMD") != std::string::npos)
-        {
-            currentGPUUsage = GetGPUUsagePercent_AMD();
-            currentTemp = GetGPUTemperature_AMD();
-        }
-        else if (vendor.find("Intel") != std::string::npos)
-        {
-            currentGPUUsage = GetGPUUsagePercent_Intel();
-            currentTemp = GetGPUTemperature_Intel();
-        }
-        else
-        {
-            currentGPUUsage = 0;
-            currentTemp = 0;
-        }
 #else
         currentRAM = 4096;
         currentGPUUsage = 70;
@@ -247,7 +214,7 @@ void RenderStatsOverlay()
     ImGui::Text("GPU Usage: %d%%", currentGPUUsage);
     ImGui::Text("Temp: %d C", currentTemp);
 
-    // Debug: show last update time to verify refreshing.
+    // Debug: Display last update time to verify refreshing.
     // ImGui::Text("Last update: %.1f", lastUpdateTime);
 
     ImGui::End();
