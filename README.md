@@ -1,25 +1,30 @@
 # Real-time Black Hole Rendering in OpenGL
 
-Screenshot
+![Screenshot](link-to-screenshot-if-available)
 
 A real-time renderer implementing general relativistic effects around Schwarzschild black holes.
 
 ## Features
 
-- **Gravitational Lensing**: Light bending near massive objects
-- **Accretion Disk Rendering**: Procedural multi-wavelength disk
-- **Relativistic Doppler Effects**: Spectral shifting and beaming
-- **Photon Sphere Visualization**: Light trapping at 1.5 Schwarzschild radii
-- **Adaptive Ray Marching**: Stable integration near event horizon
+- **Gravitational Lensing**: Light bending near massive objects.
+- **Accretion Disk Rendering**: Procedural multi-wavelength disk.
+- **Relativistic Doppler Effects**: Spectral shifting and beaming.
+- **Photon Sphere Visualization**: Light trapping at 1.5 Schwarzschild radii.
+- **Adaptive Ray Marching**: Stable integration near the event horizon.
+- **Real-time Stats Overlay**: Displays FPS, RAM usage, GPU usage, and temperature in real time (positioned at the top‑right corner).  
+  *(On Linux, RAM is retrieved via the sysinfo API, GPU usage via the NVIDIA GL_NVX_gpu_memory_info extension, and temperature via sysfs.)*
 
 ### Dependencies
+
 - OpenGL 4.6+
 - GLFW 3.3
 - GLM 0.9.9+
 - CMake 3.12
+- [Dear ImGui](https://github.com/ocornut/imgui) (for the overlay)
 
 ## Build & Run
-```
+
+```bash
 git clone https://github.com/WalkingDevFlag/BlackHole
 cd BlackHole
 ./Blackhole.sh build
@@ -29,10 +34,11 @@ cd BlackHole
 ## Technical Approach
 
 Implements General Relativity through:
-- Schwarzschild metric tensor calculations
-- Null geodesic integration in GLSL
-- Adaptive Runge-Kutta integration
-- Relativistic radiative transfer approximation
+- Schwarzschild metric tensor calculations.
+- Null geodesic integration in GLSL.
+- Adaptive Runge-Kutta integration.
+- Relativistic radiative transfer approximation.
+- Real-time performance metrics using a custom ImGui overlay (Linux: sysinfo, GL_NVX_gpu_memory_info, and sysfs).
 
 Based on theoretical work from:
 - Gravitational Lensing in Astrophysics[1]
@@ -42,13 +48,13 @@ Based on theoretical work from:
 ## Issues
 
 Areas needing contribution:
-- Kerr metric implementation
-- Spectral line simulation
-- GPU memory optimization
+- Kerr metric implementation.
+- Spectral line simulation.
+- GPU memory optimization.
 
 ## Inspiration
 
-This project was inspired by the work done in the [rossning92/Blackhole](https://github.com/rossning92/Blackhole) repository. We've built upon their foundation to create our own implementation with additional features and optimizations.
+This project was inspired by the work done in the [rossning92/Blackhole](https://github.com/rossning92/Blackhole) repository. We've built upon their foundation to create our own implementation with additional features and optimizations—including a real-time stats overlay for monitoring performance.
 
 ## Acknowledgements
 
