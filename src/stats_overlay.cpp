@@ -1,15 +1,23 @@
 #include "stats_overlay.h"
 #include "imgui.h"
+#include <GL/glew.h>  // Required for glGetString, glGetIntegerv, etc.
 
 #ifdef __linux__
 #include <sys/sysinfo.h>
 #include <fstream>
 #include <string>
+#include <cstring> // For strstr
+#include <cstdio>  // For popen, fgets, pclose
+#include <sstream> // For stringstream
+#endif
+
+#ifdef USE_NVML
+#include <nvml.h>
 #endif
 
 // Timer variables (using ImGui::GetTime)
 static float lastUpdateTime = 0.0f;
-static float updateInterval = 1.0f; // Update every ~1 seconds
+static float updateInterval = 1.0f; // Update every ~1 second
 
 // Variables for stats
 static float currentFPS = 0.0f;
@@ -32,25 +40,110 @@ static int GetRAMUsageMB()
     return 0;
 }
 
-#ifdef GL_NVX_gpu_memory_info
-// Retrieve GPU usage percentage using the GL_NVX_gpu_memory_info extension.
-static int GetGPUUsagePercent()
+// Original method using OpenGL extension (may not work under WSL)
+static int GetGPUUsagePercent_OpenGL()
 {
-    int totalMemoryKB = 0;
-    int currentAvailableKB = 0;
-    glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &totalMemoryKB);
-    glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &currentAvailableKB);
-    if (totalMemoryKB > 0)
+    const char* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+    if (extensions && strstr(extensions, "GL_NVX_gpu_memory_info"))
     {
-        int usedMemoryKB = totalMemoryKB - currentAvailableKB;
-        return (usedMemoryKB * 100) / totalMemoryKB;
+        int totalMemoryKB = 0;
+        int currentAvailableKB = 0;
+        glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &totalMemoryKB);
+        glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &currentAvailableKB);
+        if (totalMemoryKB > 0)
+        {
+            int usedMemoryKB = totalMemoryKB - currentAvailableKB;
+            return (usedMemoryKB * 100) / totalMemoryKB;
+        }
     }
     return 0;
 }
-#else
-static int GetGPUUsagePercent()
+
+#ifdef USE_NVML
+// Retrieve GPU usage percentage using NVML.
+static int GetNVMLGPUUsagePercent()
 {
-    return 0;
+    nvmlReturn_t result = nvmlInit();
+    if (result != NVML_SUCCESS)
+        return 0;
+    nvmlDevice_t device;
+    result = nvmlDeviceGetHandleByIndex(0, &device);
+    if (result != NVML_SUCCESS) {
+        nvmlShutdown();
+        return 0;
+    }
+    nvmlUtilization_t utilization;
+    result = nvmlDeviceGetUtilizationRates(device, &utilization);
+    if (result != NVML_SUCCESS) {
+        nvmlShutdown();
+        return 0;
+    }
+    int usage = utilization.gpu;
+    nvmlShutdown();
+    return usage;
+}
+
+// Retrieve GPU temperature using NVML.
+static int GetNVMLGPUTemperature()
+{
+    nvmlReturn_t result = nvmlInit();
+    if (result != NVML_SUCCESS)
+        return 0;
+    nvmlDevice_t device;
+    result = nvmlDeviceGetHandleByIndex(0, &device);
+    if (result != NVML_SUCCESS) {
+        nvmlShutdown();
+        return 0;
+    }
+    unsigned int temp;
+    result = nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp);
+    if (result != NVML_SUCCESS) {
+        nvmlShutdown();
+        return 0;
+    }
+    nvmlShutdown();
+    return static_cast<int>(temp);
+}
+#endif // USE_NVML
+
+// Alternative method: query using nvidia-smi via popen.
+#ifdef __linux__
+static int GetGPUUsagePercent_Smi()
+{
+    FILE* pipe = popen("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits", "r");
+    if (!pipe)
+        return 0;
+    char buffer[128];
+    std::string result = "";
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL)
+    {
+        result += buffer;
+    }
+    pclose(pipe);
+    try {
+        return std::stoi(result);
+    } catch(...) {
+        return 0;
+    }
+}
+
+static int GetGPUTemperature_Smi()
+{
+    FILE* pipe = popen("nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits", "r");
+    if (!pipe)
+        return 0;
+    char buffer[128];
+    std::string result = "";
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL)
+    {
+        result += buffer;
+    }
+    pclose(pipe);
+    try {
+        return std::stoi(result);
+    } catch(...) {
+        return 0;
+    }
 }
 #endif
 
@@ -77,8 +170,19 @@ static void UpdateStats()
         currentFPS = ImGui::GetIO().Framerate;
 #ifdef __linux__
         currentRAM = GetRAMUsageMB();
-        currentGPUUsage = GetGPUUsagePercent();
+#ifdef USE_NVML
+        int gpuUsage = GetNVMLGPUUsagePercent();
+        int gpuTemp = GetNVMLGPUTemperature();
+        if (gpuUsage == 0)
+            gpuUsage = GetGPUUsagePercent_Smi();
+        if (gpuTemp == 0)
+            gpuTemp = GetGPUTemperature_Smi();
+        currentGPUUsage = gpuUsage;
+        currentTemp = gpuTemp;
+#else
+        currentGPUUsage = GetGPUUsagePercent_OpenGL();
         currentTemp = GetCPUTemperature();
+#endif
 #else
         currentRAM = 4096;
         currentGPUUsage = 70;
@@ -93,10 +197,9 @@ void RenderStatsOverlay()
     UpdateStats();
 
     // Position the overlay in the top-right corner.
-    // We set the position using a pivot of (1,0) so the window's top-right corner is anchored.
     ImGui::SetNextWindowPos(
-        ImVec2(ImGui::GetIO().DisplaySize.x - 10, 10), 
-        ImGuiCond_Always, 
+        ImVec2(ImGui::GetIO().DisplaySize.x - 10, 10),
+        ImGuiCond_Always,
         ImVec2(1, 0)
     );
 
@@ -110,6 +213,9 @@ void RenderStatsOverlay()
     ImGui::Text("RAM: %d MB", currentRAM);
     ImGui::Text("GPU Usage: %d%%", currentGPUUsage);
     ImGui::Text("Temp: %d C", currentTemp);
+
+    // Debug: Display last update time to verify refreshing.
+    // ImGui::Text("Last update: %.1f", lastUpdateTime);
 
     ImGui::End();
 }
