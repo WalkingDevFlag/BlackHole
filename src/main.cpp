@@ -1,6 +1,6 @@
 /**
  * @file main.cpp
- * @brief Real-time black hole rendering in OpenGL with OpenMP for simulation parallelism.
+ * @brief Real-time black hole rendering in OpenGL with OpenMP and CUDA simulation threads.
  * @version 0.1
  * @date 2020-08-29
  *
@@ -40,6 +40,9 @@
  
  #include "stats_overlay.h"
  
+ // Include our CUDA simulation header.
+ #include "cuda_simulation.h"
+ 
  // -----------------------------------------------------------------------------
  // Global Constants & Variables
  // -----------------------------------------------------------------------------
@@ -59,11 +62,11 @@
    rtti.floatUniforms[#NAME] = NAME;
  
  // Use a lock-free atomic for the simulation parameter.
- std::atomic<float> simulationParam {0.0f}; // Updated by the simulation thread.
+ std::atomic<float> simulationParam {0.0f}; // Updated by the CPU simulation thread.
  bool simulationRunning = true;
  
  // -----------------------------------------------------------------------------
- // Simulation Thread Function Using OpenMP
+ // CPU Simulation Thread Function Using OpenMP (existing simulation)
  // -----------------------------------------------------------------------------
  void simulationThreadFunc() {
      using namespace std::chrono;
@@ -92,7 +95,7 @@
          for (int i = 0; i < iterations; i++) {
              result += sin(i * sp);
          }
-         // Use volatile to prevent compiler optimization of dummy computation.
+         // Prevent compiler optimization of dummy computation.
          volatile double dummy = result;
  
          std::this_thread::sleep_for(milliseconds(10));
@@ -218,8 +221,10 @@
          ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
      }
  
-     // Start the simulation thread using OpenMP parallelism.
+     // Start the CPU simulation thread using OpenMP.
      std::thread simulationThread(simulationThreadFunc);
+     // Start a separate CUDA simulation thread.
+     std::thread cudaThread(runCUDASimulation);
  
      GLuint fboBlackhole, texBlackhole;
      texBlackhole = createColorTexture(SCR_WIDTH, SCR_HEIGHT);
@@ -261,7 +266,7 @@
              rtti.textureUniforms["colorMap"] = colorMap;
              rtti.floatUniforms["mouseX"] = mouseX;
              rtti.floatUniforms["mouseY"] = mouseY;
-             // Removed simulationParam uniform update since it's not used in the shader.
+             // Simulation parameter is not updated here.
              rtti.targetTexture = texBlackhole;
              rtti.width = SCR_WIDTH;
              rtti.height = SCR_HEIGHT;
@@ -361,7 +366,7 @@
  
          passthrough.render(texTonemapped);
  
-         // Render the stats overlay
+         // Render the stats overlay.
          RenderStatsOverlay();
  
          ImGui::Render();
@@ -372,6 +377,7 @@
  
      simulationRunning = false;
      simulationThread.join();
+     cudaThread.join();
  
      glfwDestroyWindow(window);
      glfwTerminate();
