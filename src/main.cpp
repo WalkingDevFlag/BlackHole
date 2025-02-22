@@ -1,6 +1,6 @@
 /**
  * @file main.cpp
- * @author Ross Ning (rossning92@gmail.com)
+ * @author Ross 
  * @brief Real-time black hole rendering in OpenGL.
  * @version 0.1
  * @date 2020-08-29
@@ -21,6 +21,12 @@
  #include <glm/gtc/type_ptr.hpp>
  #include <glm/gtx/euler_angles.hpp>
  #include <imgui.h>
+ 
+ // Added for asynchronous simulation updates and heavy computation
+ #include <thread>
+ #include <mutex>
+ #include <chrono>
+ #include <cmath>
  
  #include <GLDebugMessageCallback.h>
  #include <imgui_impl_glfw.h>
@@ -45,6 +51,40 @@
    static float NAME = DEFAULT;                                                 \
    ImGui::SliderFloat(#NAME, &NAME, MIN, MAX);                                  \
    rtti.floatUniforms[#NAME] = NAME;
+ 
+ // Global simulation data
+ std::mutex simulationMutex;
+ float simulationParam = 0.0f; // Updated by simulation thread (not used by shader anymore)
+ bool simulationRunning = true;
+ 
+ // Simulation thread function with heavy (dummy) computation.
+ // This offloads intensive work from the main thread.
+ void simulationThreadFunc() {
+   using namespace std::chrono;
+   auto lastTime = steady_clock::now();
+   while (simulationRunning) {
+     auto now = steady_clock::now();
+     duration<float> delta = now - lastTime;
+     lastTime = now;
+     float dt = delta.count();
+     float speed = 0.5f; // simulation speed factor
+ 
+     {
+       std::lock_guard<std::mutex> lock(simulationMutex);
+       simulationParam += dt * speed;
+       if (simulationParam > 6.28318f) // wrap around 2*pi
+         simulationParam -= 6.28318f;
+     }
+ 
+     // Simulate heavy computation to mimic a demanding simulation.
+     volatile double dummy = 0.0;
+     for (int i = 0; i < 1000000; i++) {
+       dummy += sin(i * simulationParam);
+     }
+ 
+     std::this_thread::sleep_for(milliseconds(10));
+   }
+ }
  
  static void glfwErrorCallback(int error, const char *description) {
    fprintf(stderr, "Glfw Error %d: %s\n", error, description);
@@ -105,7 +145,6 @@
    if (!glfwInit())
      return 1;
  
-   // Create window with graphics context
    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
    GLFWwindow *window =
        glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Wormhole", NULL, NULL);
@@ -113,8 +152,6 @@
      return 1;
    glfwMakeContextCurrent(window);
    glfwSwapInterval(1); // Enable vsync
-   // glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-   // glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
    glfwSetCursorPosCallback(window, mouseCallback);
    glfwSetWindowPos(window, 0, 0);
  
@@ -126,60 +163,40 @@
  
    if (0)
    {
-     // Enable the debugging layer of OpenGL
-     //
-     // GL_DEBUG_OUTPUT - Faster version but not useful for breakpoints
-     // GL_DEBUG_OUTPUT_SYNCHRONUS - Callback is in sync with errors, so a
-     // breakpoint can be placed on the callback in order to get a stacktrace for
-     // the GL error. (enable together with GL_DEBUG_OUTPUT !)
- 
      glEnable(GL_DEBUG_OUTPUT);
-     // glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
- 
-     // Set the function that will be triggered by the callback, the second
-     // parameter is the data parameter of the callback, it can be useful for
-     // different contexts but isn't necessary for our simple use case.
      glDebugMessageCallback(GLDebugMessageCallback, nullptr);
    }
  
    {
- 
-     // Decide GL+GLSL versions
  #if __APPLE__
-     // GL 3.2 + GLSL 150
      const char *glsl_version = "#version 150";
      glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
      glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // 3.2+ only
-     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Required on Mac
+     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
  #else
-     // GL 3.0 + GLSL 130
      const char *glsl_version = "#version 130";
      glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
      glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-     // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+
-     // only glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // 3.0+ only
  #endif
  
-     // Setup Dear ImGui context
      IMGUI_CHECKVERSION();
      ImGui::CreateContext();
      ImGuiIO &io = ImGui::GetIO();
      (void)io;
  
-     // Setup Dear ImGui style
      ImGui::StyleColorsDark();
-     // ImGui::StyleColorsClassic();
  
-     // Setup Platform/Renderer bindings
      ImGui_ImplGlfw_InitForOpenGL(window, true);
      ImGui_ImplOpenGL3_Init(glsl_version);
  
-     // Our state
      bool show_demo_window = true;
      bool show_another_window = false;
      ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
    }
+ 
+   // Start the simulation thread to offload heavy simulation computations.
+   std::thread simulationThread(simulationThreadFunc);
  
    GLuint fboBlackhole, texBlackhole;
    texBlackhole = createColorTexture(SCR_WIDTH, SCR_HEIGHT);
@@ -193,7 +210,6 @@
    GLuint quadVAO = createQuadVAO();
    glBindVertexArray(quadVAO);
  
-   // Main loop
    PostProcessPass passthrough("shader/passthrough.frag");
  
    while (!glfwWindowShouldClose(window)) {
@@ -202,22 +218,13 @@
      ImGui_ImplOpenGL3_NewFrame();
      ImGui_ImplGlfw_NewFrame();
      ImGui::NewFrame();
-    
-    //  int display_w, display_h;
-    //  glfwGetFramebufferSize(window, &display_w, &display_h);
-    //  glViewport(0, 0, display_w, display_h);
-      
-     // ImGui::ShowDemoWindow();
  
      int width, height;
      glfwGetFramebufferSize(window, &width, &height);
      glViewport(0, 0, width, height);
  
-     // Set the clear color (e.g., black)
      glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-     // renderScene(fboBlackhole);
  
      static GLuint galaxy = loadCubemap("assets/skybox_nebula_dark");
      static GLuint colorMap = loadTexture2D("assets/color_map.png");
@@ -231,6 +238,7 @@
        rtti.textureUniforms["colorMap"] = colorMap;
        rtti.floatUniforms["mouseX"] = mouseX;
        rtti.floatUniforms["mouseY"] = mouseY;
+       // Removed simulationParam uniform update to avoid warnings since it's not used in the shader.
        rtti.targetTexture = texBlackhole;
        rtti.width = SCR_WIDTH;
        rtti.height = SCR_HEIGHT;
@@ -334,23 +342,18 @@
      }
  
      passthrough.render(texTonemapped);
-
+ 
      // Render the stats overlay
      RenderStatsOverlay();
-
+ 
      ImGui::Render();
-
-    //  glClear(GL_COLOR_BUFFER_BIT);
-     
      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
  
      glfwSwapBuffers(window);
    }
  
-   // // Cleanup
-   // ImGui_ImplOpenGL3_Shutdown();
-   // ImGui_ImplGlfw_Shutdown();
-   // ImGui::DestroyContext();
+   simulationRunning = false;
+   simulationThread.join();
  
    glfwDestroyWindow(window);
    glfwTerminate();
