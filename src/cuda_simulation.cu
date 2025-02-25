@@ -1,63 +1,64 @@
-// cuda_simulation.cu
-#include "cuda_simulation.h"
-#include <iostream>
-#include <vector>
 #include <cuda_runtime.h>
-#include <chrono>
+#include <math.h>
+#include <stdio.h>
+#include "cuda_simulation.h"
 
-// CUDA kernel for vector addition
-__global__ void vecAdd(const float* A, const float* B, float* C, int n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if(i < n)
-        C[i] = A[i] + B[i];
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+// CUDA Kernel: Each thread computes a partial sum of sin(i * simulationParam)
+// over a subset of iterations. The results are combined using an atomic addition.
+__global__ void simulationKernel(float simulationParam, int iterations, float *result) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    float sum = 0.0f;
+    for (int i = idx; i < iterations; i += stride) {
+        sum += sinf(i * simulationParam);
+    }
+    // Use atomic addition to accumulate the partial sum.
+    atomicAdd(result, sum);
 }
 
-void runCUDASimulation() {
-    const int n = 1024;
-    size_t size = n * sizeof(float);
-    std::vector<float> h_A(n, 1.0f), h_B(n, 2.0f), h_C(n, 0.0f);
+// Host function that runs the CUDA simulation.
+extern "C" void runCUDASimulation() {
+    const int iterations = 1000000; // Total iterations per simulation step.
+    float h_result = 0.0f;
+    float *d_result;
     
-    float *d_A, *d_B, *d_C;
-    cudaError_t err;
-    
-    // Allocate device memory
-    err = cudaMalloc((void**)&d_A, size);
-    if(err != cudaSuccess) { std::cerr << "cudaMalloc failed for d_A\n"; return; }
-    err = cudaMalloc((void**)&d_B, size);
-    if(err != cudaSuccess) { std::cerr << "cudaMalloc failed for d_B\n"; cudaFree(d_A); return; }
-    err = cudaMalloc((void**)&d_C, size);
-    if(err != cudaSuccess) { std::cerr << "cudaMalloc failed for d_C\n"; cudaFree(d_A); cudaFree(d_B); return; }
-    
-    // Copy input data to device
-    err = cudaMemcpy(d_A, h_A.data(), size, cudaMemcpyHostToDevice);
-    if(err != cudaSuccess) { std::cerr << "cudaMemcpy failed for d_A\n"; return; }
-    err = cudaMemcpy(d_B, h_B.data(), size, cudaMemcpyHostToDevice);
-    if(err != cudaSuccess) { std::cerr << "cudaMemcpy failed for d_B\n"; return; }
-    
-    // Launch kernel: choose block and grid sizes
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (n + threadsPerBlock - 1) / threadsPerBlock;
-    
-    auto start = std::chrono::high_resolution_clock::now();
-    vecAdd<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, n);
-    cudaDeviceSynchronize();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> execTime = end - start;
-    std::cout << "CUDA kernel execution time: " << execTime.count() << " ms\n";
-    
-    // Copy result back to host
-    err = cudaMemcpy(h_C.data(), d_C, size, cudaMemcpyDeviceToHost);
-    if(err != cudaSuccess) { std::cerr << "cudaMemcpy failed for result\n"; }
-    
-    // Check results (optional)
-    bool success = true;
-    for (int i = 0; i < n; i++) {
-        if(h_C[i] != 3.0f) { success = false; break; }
+    // Allocate device memory for the result.
+    cudaMalloc((void**)&d_result, sizeof(float));
+    cudaMemcpy(d_result, &h_result, sizeof(float), cudaMemcpyHostToDevice);
+
+    const int threadsPerBlock = 256;
+    int blocks = (iterations + threadsPerBlock - 1) / threadsPerBlock;
+    float simulationParam = 0.0f;
+
+    while (true) {
+        // Update simulation parameter and wrap around 2π.
+        simulationParam = fmodf(simulationParam + 0.01f, 6.28318f);
+        
+        // Reset the device result.
+        cudaMemset(d_result, 0, sizeof(float));
+        
+        // Launch the kernel.
+        simulationKernel<<<blocks, threadsPerBlock>>>(simulationParam, iterations, d_result);
+        cudaDeviceSynchronize();
+        
+        // Copy the result back from device to host.
+        cudaMemcpy(&h_result, d_result, sizeof(float), cudaMemcpyDeviceToHost);
+        printf("CUDA Simulation result: %f, simulationParam: %f\n", h_result, simulationParam);
+        
+        // Sleep for 10ms to mimic timestep pacing.
+        #ifdef _WIN32
+            Sleep(10);
+        #else
+            usleep(10 * 1000); // 10ms on Unix-like systems.
+        #endif
     }
-    std::cout << "CUDA Simulation: " << (success ? "Success!" : "Failure!") << std::endl;
-    
-    // Clean up device memory
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+
+    // Cleanup (unreachable in this infinite loop; add termination logic as needed).
+    cudaFree(d_result);
 }

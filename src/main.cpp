@@ -42,6 +42,7 @@
  
  // Include our CUDA simulation header.
  #include "cuda_simulation.h"
+
  
  // -----------------------------------------------------------------------------
  // Global Constants & Variables
@@ -76,7 +77,7 @@
          duration<float> delta = now - lastTime;
          lastTime = now;
          float dt = delta.count();
-         float speed = 0.5f; // simulation speed factor
+         float speed = 0.01f; // simulation speed factor
  
          // Atomically update the simulation parameter.
          float current = simulationParam.load(std::memory_order_relaxed);
