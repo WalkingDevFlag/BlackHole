@@ -39,13 +39,12 @@
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-
-// GLFW
+#include <omp.h>
 #include <GLFW/glfw3.h>
 #ifdef _WIN32
 #undef APIENTRY
 #define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>   // for glfwGetWin32Window
+#include <GLFW/glfw3native.h>
 #endif
 #define GLFW_HAS_WINDOW_TOPMOST       (GLFW_VERSION_MAJOR * 1000 + GLFW_VERSION_MINOR * 100 >= 3200) // 3.2+ GLFW_FLOATING
 #define GLFW_HAS_WINDOW_HOVERED       (GLFW_VERSION_MAJOR * 1000 + GLFW_VERSION_MINOR * 100 >= 3300) // 3.3+ GLFW_HOVERED
@@ -165,7 +164,7 @@ static bool ImGui_ImplGlfw_Init(GLFWwindow* window, bool install_callbacks, Glfw
     io.KeyMap[ImGuiKey_Space] = GLFW_KEY_SPACE;
     io.KeyMap[ImGuiKey_Enter] = GLFW_KEY_ENTER;
     io.KeyMap[ImGuiKey_Escape] = GLFW_KEY_ESCAPE;
-    io.KeyMap[ImGuiKey_KeypadEnter] = GLFW_KEY_KP_ENTER;
+    io.KeyMap[ImGuiKey_KeyPadEnter] = GLFW_KEY_KP_ENTER;
     io.KeyMap[ImGuiKey_A] = GLFW_KEY_A;
     io.KeyMap[ImGuiKey_C] = GLFW_KEY_C;
     io.KeyMap[ImGuiKey_V] = GLFW_KEY_V;
@@ -254,6 +253,7 @@ static void ImGui_ImplGlfw_UpdateMousePosAndButtons()
 {
     // Update buttons
     ImGuiIO& io = ImGui::GetIO();
+    #pragma omp parallel for
     for (int i = 0; i < IM_ARRAYSIZE(io.MouseDown); i++)
     {
         // If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
