@@ -38,7 +38,7 @@ pip install "conan<2"
 4. You can then check the version of the conan:
 
 ```bash
-conan --versio
+conan --version
 ```
 
 ## Build the code
